@@ -22,34 +22,42 @@ except:
     pass
 
 DropPath.__repr__ = lambda self: f"timm.DropPath({self.drop_prob})"
-### không có 1x1 conv và 3x3 conv trước DDBE
-class DDBE_NHWC(nn.Module):
+class LDDFB(nn.Module):
     def __init__(self, C, reduction=1):
         super().__init__()
         C_mid = C // reduction if reduction > 0 else C
-        self.s_dw = nn.Conv2d(C, C, kernel_size=3, padding=1, groups=C, bias=False) # depthwise conv, học riêng cho từng channel 3x3 conv
-        self.s_pw = nn.Conv2d(C, C_mid, kernel_size=1, bias=False) # học mối quan hệ giữa các channel, trộn các feature channel với nhau 1x1 conv
-        self.freq_weight = nn.Parameter(torch.randn(1, C_mid, 1, 1) * 0.02) #random ra số nhỏ, học trong loss
-        self.fuse = nn.Conv2d(C_mid * 2, C, kernel_size=1, bias=False) # trộn channel
 
-    def forward(self, x):   
+        self.s_dw = nn.Conv2d(C, C, kernel_size=3, padding=1, groups=C, bias=False)
+        self.s_pw = nn.Conv2d(C, C_mid, kernel_size=1, bias=False)
+
+        self.freq_weight = nn.Parameter(torch.randn(1, C_mid, 1, 1) * 0.02)
+
+        self.fuse = nn.Conv2d(C_mid * 2, C, kernel_size=1, bias=False)
+
+    def forward(self, x):
         B,H,W,C = x.shape
+
         xs = x.permute(0,3,1,2)
         xs = self.s_dw(xs)
-        xs = self.s_pw(xs)  
-        xf = x.permute(0,3,1,2) # nhánh xf kh có 1x1 conv        
-        xf = torch.fft.rfft2(xf, norm="ortho") 
+        xs = self.s_pw(xs)
+
+        xf = x.permute(0,3,1,2)
+        xf = torch.fft.rfft2(xf, norm="ortho")
+
         C_mid = xs.shape[1]
-        xf = xf[:, :C_mid]             
+        xf = xf[:, :C_mid]
+
         xf = xf * self.freq_weight.to(xf.dtype)
-        xf = torch.fft.irfft2(xf, s=(H,W), norm="ortho")  
+
+        xf = torch.fft.irfft2(xf, s=(H,W), norm="ortho")
+
         out = torch.cat([xs, xf], dim=1)
         out = self.fuse(out)
         return out.permute(0,2,3,1)
+
+
+
 class ConvBlock(nn.Module):
-    """
-    2 lớp Conv-BN-ReLU (định dạng NCHW)
-    """
 
     def __init__(self, in_c, out_c):
         super().__init__()
@@ -296,7 +304,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class ReverseAttentionBlock(nn.Module):
+class RGRB(nn.Module):
     """
     Reverse Attention cho Vision Mamba decoder.
     Dùng mask 1 - sigmoid(pred) để tập trung vùng sai.
@@ -305,18 +313,18 @@ class ReverseAttentionBlock(nn.Module):
     def __init__(self, dim, num_classes=1):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
-        self.refine = SS2D(d_model=dim, d_state=16) 
+        self.refine = SS2D(d_model=dim, d_state=16)  
         self.proj_out = nn.Conv2d(dim, num_classes, kernel_size=1)
 
     def forward(self, x, pred_prev):
         B, H, W, C = x.shape
-        mask_rev = 1 - torch.sigmoid(pred_prev) # ơ(pt-1), vùng tự tin cao là giá trị nhỏ còn thấp là giá trị lớn
-        mask_rev = F.interpolate(mask_rev, size=(H, W), mode='bilinear', align_corners=False) #resize để cùng resolution, đưa cái mask từ stages trước về kích thước của x
+        mask_rev = 1 - torch.sigmoid(pred_prev)
+        mask_rev = F.interpolate(mask_rev, size=(H, W), mode='bilinear', align_corners=False)
 
-        mask_rev = mask_rev.mean(dim=1, keepdim=True)  
+        mask_rev = mask_rev.mean(dim=1, keepdim=True)  # (B,1,H,W)
 
-        mask_rev = mask_rev.permute(0, 2, 3, 1)
-        x = x * mask_rev # focus vào vùng sai
+        mask_rev = mask_rev.permute(0, 2, 3, 1)  # (B,H,W,1)
+        x = x * mask_rev
         y = self.refine(self.norm(x))
         out = self.proj_out(y.permute(0, 3, 1, 2))
         return out
@@ -394,7 +402,7 @@ class SS2D(nn.Module):
         # self.selective_scan = selective_scan_fn
         self.forward_core = self.forward_corev0
 
-        self.out_norm = RMSNormNHWC(self.d_inner)
+        self.out_norm = RMSNorm(self.d_inner)
         self.out_proj = nn.Linear(self.d_inner, self.d_model, bias=bias, **factory_kwargs)
         self.dropout = nn.Dropout(dropout) if dropout > 0. else None
 
@@ -614,11 +622,11 @@ class VSSLayer(nn.Module):
             )
             for i in range(depth)])
 
-        if True:  
+        if True:
             def _init_weights(module: nn.Module):
                 for name, p in module.named_parameters():
                     if name in ["out_proj.weight"]:
-                        p = p.clone().detach_()  
+                        p = p.clone().detach_()
                         nn.init.kaiming_uniform_(p, a=math.sqrt(5))
 
             self.apply(_init_weights)
@@ -680,11 +688,11 @@ class VSSLayer_up(nn.Module):
             )
             for i in range(depth)])
 
-        if True: 
+        if True:
             def _init_weights(module: nn.Module):
                 for name, p in module.named_parameters():
                     if name in ["out_proj.weight"]:
-                        p = p.clone().detach_()  
+                        p = p.clone().detach_()
                         nn.init.kaiming_uniform_(p, a=math.sqrt(5))
 
             self.apply(_init_weights)
@@ -704,20 +712,17 @@ class VSSLayer_up(nn.Module):
                 x = blk(x)
         return x
 
-class TripletSSMBottleneck(nn.Module):
-    """
-    3 nhánh SSM cấu hình khác nhau + soft fusion.
-    """
+class Long_Short_SSM(nn.Module):
+
 
     def __init__(self, dim, d_state=16, drop_path=0.0):
         super().__init__()
-        self.norm = RMSNormNHWC(dim)
+        self.norm = RMSNorm(dim)
         self.br1 = SS2D(dim, d_state=d_state // 2, expand=1.25)
-        self.br2 = SS2D(dim, d_state=d_state, expand=1.75) 
-        self.br3 = SS2D(dim, d_state=d_state * 2, expand=1.25)  
+        self.br2 = SS2D(dim, d_state=d_state, expand=1.75)
+        self.br3 = SS2D(dim, d_state=d_state * 2, expand=1.25)
         self.gate = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
-                                  nn.Conv2d(dim, 3, 1, bias=True))  #gap giúp tóm tắt toàn bộ không gian, xem channel này có đang active mạnh hay không, chỉ có global context, quyết định nhánh nào sẽ dùng
-        # này là conv1x1 vì sau gap input shape là B x C x 1 x 1, ánh xạ sang 3 score, mỗi score cho 1 nhánh ss2d
+                                  nn.Conv2d(dim, 3, 1, bias=True))
         self.proj = nn.Linear(3 * dim, dim, bias=False)
         self.dp = DropPath(drop_path)
 
@@ -725,23 +730,15 @@ class TripletSSMBottleneck(nn.Module):
         z = self.norm(x)
         y1 = self.br1(z)
         y2 = self.br2(z)
-        y3 = self.br3(z)  
-        w = self.gate(z.permute(0, 3, 1, 2)).softmax(1)  
-        w1, w2, w3 = [w[:, i:i + 1].permute(0, 2, 3, 1) for i in range(3)] # cắt trọng số ra
+        y3 = self.br3(z)
+        w = self.gate(z.permute(0, 3, 1, 2)).softmax(1)
+        w1, w2, w3 = [w[:, i:i + 1].permute(0, 2, 3, 1) for i in range(3)]
         y = torch.cat([w1 * y1, w2 * y2, w3 * y3], dim=-1)
         y = self.proj(y)
         return x + self.dp(y)
 
 
-class RGatedSkipNHWC(nn.Module):
-    """
-    Residual-gated skip (NHWC):
-      y = skip + (1 - g) * (dec - skip)
-    g = sigmoid( (MLP([skip, dec]) + DWConv) / tau )
-    - Ổn định hơn trộn tuyến tính; giữ cấu trúc tốt của skip khi g≈1.
-    - DWConv rất nhẹ để g thấy biên (boundary).
-    """
-
+class Semantic_Difference_Gated_Skip_Connections(nn.Module):
     def __init__(self, c: int, reduction: int = 8, init_bias: float = -0.5, tau: float = 1.5):
         super().__init__()
         inter = max(c // reduction, 1)
@@ -749,37 +746,34 @@ class RGatedSkipNHWC(nn.Module):
         self.norm = nn.LayerNorm(inter)
         self.act = nn.SiLU(inplace=True)
         self.proj2 = nn.Linear(inter, c, bias=True)
-        self.dw = nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True) #depthwise convolution, c&c, khong trộn channel
+        self.dw = nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True)
         self.sig = nn.Sigmoid()
         self.tau = tau
 
         with torch.no_grad():
             self.proj2.bias.fill_(init_bias)
 
-    def forward(self, skip, dec): 
-        g = torch.cat([skip, dec], dim=-1)  
-        g = self.proj2(self.act(self.norm(self.proj1(g)))) 
+    def forward(self, skip, dec):
+        g = torch.cat([skip, dec], dim=-1)
+        g = self.proj2(self.act(self.norm(self.proj1(g))))
 
-        g = g.permute(0, 3, 1, 2)  
+        g = g.permute(0, 3, 1, 2)
         g = self.dw(g)
-        g = g.permute(0, 2, 3, 1)  
+        g = g.permute(0, 2, 3, 1)
 
-        g = self.sig(g / self.tau) 
+        g = self.sig(g / self.tau)
         return skip + (1.0 - g) * (dec - skip)
 
 
-class RMSNormNHWC(nn.Module):
-    """
-    RMSNorm cho tensor NHWC: (B, H, W, C)
-    y = x / sqrt(mean(x^2, dim=C) + eps) * gamma
-    """
+class RMSNorm(nn.Module):
+
 
     def __init__(self, dim: int, eps: float = 1e-6):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
-    def forward(self, x): 
+    def forward(self, x):
         rms = x.pow(2).mean(dim=-1, keepdim=True).add_(self.eps).sqrt_()
         x = x / rms
         return x * self.weight
@@ -789,17 +783,17 @@ class VSSM(nn.Module):
     def __init__(self, patch_size=4, in_chans=3, num_classes=1000, depths=[2, 2, 9, 2], depths_decoder=[2, 9, 2, 2],
                  dims=[96, 192, 384, 768], dims_decoder=[768, 384, 192, 96], d_state=16, drop_rate=0.,
                  attn_drop_rate=0., drop_path_rate=0.1,
-                 norm_layer=RMSNormNHWC, patch_norm=True,
+                 norm_layer=RMSNorm, patch_norm=True,
                  use_checkpoint=False, bottleneck='triplet', **kwargs):
         super().__init__()
 
         if bottleneck == 'triplet':
-            self.bneck = TripletSSMBottleneck(dims_decoder[0], d_state=d_state, drop_path=0.1)
+            self.bneck = Long_Short_SSM(dims_decoder[0], d_state=d_state, drop_path=0.1)
         else:
             self.bneck = None
-        encoder_bneck = 'triplet' 
+        encoder_bneck = 'triplet'
         if encoder_bneck == 'triplet':
-            self.enc_bneck = TripletSSMBottleneck(dims[-1], d_state=d_state, drop_path=0.1)
+            self.enc_bneck = Long_Short_SSM(dims[-1], d_state=d_state, drop_path=0.1)
         else:
             self.enc_bneck = None
 
@@ -811,11 +805,11 @@ class VSSM(nn.Module):
         self.num_features = dims[-1]
         self.dims = dims
 
-        self.enc_conv1 = ConvBlock(in_chans, 64)  
-        self.enc_conv2 = ConvBlock(64, 64)  
+        self.enc_conv1 = ConvBlock(in_chans, 64)
+        self.enc_conv2 = ConvBlock(64, 64)
         self.patch_embed = PatchEmbed2D(patch_size=patch_size, in_chans=64, embed_dim=self.embed_dim,
                                         norm_layer=norm_layer if patch_norm else None)
-        self.fix_patch_embed_weight = True  
+        self.fix_patch_embed_weight = True
 
         self.ape = False
 
@@ -825,7 +819,7 @@ class VSSM(nn.Module):
             trunc_normal_(self.absolute_pos_embed, std=.02)
         self.pos_drop = nn.Dropout(p=drop_rate)
         self.ra_blocks = nn.ModuleList([
-            ReverseAttentionBlock(dims_decoder[i], num_classes)
+            RGRB(dims_decoder[i], num_classes)
             for i in range(1, self.num_layers)
         ])
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
@@ -861,7 +855,8 @@ class VSSM(nn.Module):
             )
             self.layers_up.append(layer)
         self.gates = nn.ModuleList([
-            RGatedSkipNHWC(dims_decoder[i]) for i in range(1, self.num_layers)
+            Semantic_Difference_Gated_Skip_Connections
+(dims_decoder[i]) for i in range(1, self.num_layers)
         ])
         self.final_up = Final_PatchExpand2D(dim=dims_decoder[-1], dim_scale=4, norm_layer=norm_layer)
 
@@ -873,8 +868,8 @@ class VSSM(nn.Module):
         self.dec_conv2 = ConvBlock(64 + 64, 64)
 
         self.final_conv = nn.Conv2d(64, num_classes, 1)
-        self.ddbe1 = DDBE_NHWC(64)
-        self.ddbe2 = DDBE_NHWC(64)
+        self.ddbe1 = LDDFB(64)
+        self.ddbe2 = LDDFB(64)
 
 
 
@@ -922,9 +917,9 @@ class VSSM(nn.Module):
 
     def forward_features(self, x):
         skip1 = self.enc_conv1(x)
-        skip1 = skip1.permute(0, 2, 3, 1) 
+        skip1 = skip1.permute(0, 2, 3, 1)
         skip1 = checkpoint.checkpoint(self.ddbe1, skip1)
-        skip1 = skip1.permute(0, 3, 1, 2)   
+        skip1 = skip1.permute(0, 3, 1, 2)
 
         skip2 = self.enc_conv2(skip1)
         skip2 = skip2.permute(0, 2, 3, 1)
@@ -932,7 +927,7 @@ class VSSM(nn.Module):
         skip2 = skip2.permute(0, 3, 1, 2)
 
         skip_list = []
-        x = self.patch_embed(skip2)  
+        x = self.patch_embed(skip2)
         if self.ape:
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
@@ -951,13 +946,13 @@ class VSSM(nn.Module):
                 if getattr(self, "bneck", None) is not None:
                     x = checkpoint.checkpoint(self.bneck, x)
                 else:
-                    x = layer_up(x)  
+                    x = layer_up(x)
             else:
                 if layer_up.upsample is not None:
-                    x = layer_up.upsample(x)  
+                    x = layer_up.upsample(x)
 
-                skip = skip_list[-(inx + 1)]  
-                x = x+skip
+                skip = skip_list[-(inx + 1)]
+                x = self.gates[inx - 1](skip, x)
 
                 for blk in layer_up.blocks:
                     if layer_up.use_checkpoint:
@@ -968,23 +963,23 @@ class VSSM(nn.Module):
                     if pred is not None:
                         ra = checkpoint.checkpoint(self.ra_blocks[inx - 1], x, pred)
                         pred_upsampled = F.interpolate(pred, size=ra.shape[2:], mode='bilinear', align_corners=False)
-                        pred = pred_upsampled + ra  
+                        pred = pred_upsampled + ra
                     else:
-                        pred = self.ra_blocks[inx - 1].proj_out(x.permute(0, 3, 1, 2))  
+                        pred = self.ra_blocks[inx - 1].proj_out(x.permute(0, 3, 1, 2))
         return x, pred
 
     def forward_final(self, x, pred, skip1, skip2):
-        x = self.final_up(x)  
-        x = x.permute(0, 3, 1, 2)  
+        x = self.final_up(x)
+        x = x.permute(0, 3, 1, 2)
 
 
-        x = torch.cat([x, skip2], dim=1) 
+        x = torch.cat([x, skip2], dim=1)
         x = checkpoint.checkpoint(self.dec_conv1, x)
 
-        x = torch.cat([x, skip1], dim=1)  
+        x = torch.cat([x, skip1], dim=1)
         x = checkpoint.checkpoint(self.dec_conv2, x)
 
-        out = self.final_conv(x) 
+        out = self.final_conv(x)
 
         if pred is not None:
             out = out + F.interpolate(pred, size=out.shape[2:], mode='bilinear', align_corners=False)

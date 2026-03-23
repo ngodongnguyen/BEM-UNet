@@ -322,7 +322,7 @@ class SS2D(nn.Module):
         # self.selective_scan = selective_scan_fn
         self.forward_core = self.forward_corev0
 
-        self.out_norm = RMSNormNHWC(self.d_inner)
+        self.out_norm = RMSNorm(self.d_inner)
         self.out_proj = nn.Linear(self.d_inner, self.d_model, bias=bias, **factory_kwargs)
         self.dropout = nn.Dropout(dropout) if dropout > 0. else None
 
@@ -639,7 +639,7 @@ class VimBiDirBottleneck(nn.Module):
     """
     def __init__(self, dim, d_state=16, expand=1.5, drop_path=0.0):
         super().__init__()
-        self.norm = RMSNormNHWC(dim)
+        self.norm = RMSNorm(dim)
         self.ssm_h = SS2D(dim, d_state=d_state, expand=expand)  # scan theo raster HxW
         self.ssm_v = SS2D(dim, d_state=d_state, expand=expand)  # scan theo raster WxH
         self.fuse  = nn.Linear(2*dim, dim, bias=False)
@@ -654,13 +654,13 @@ class VimBiDirBottleneck(nn.Module):
         return x + self.dp(y)
 # --- add to vmamba.py ---
 # --- add to vmamba.py ---
-class TripletSSMBottleneck(nn.Module):
+class Long_Short_SSM(nn.Module):
     """
     3 nhánh SSM cấu hình khác nhau + soft fusion.
     """
     def __init__(self, dim, d_state=16, drop_path=0.0):
         super().__init__()
-        self.norm = RMSNormNHWC(dim)
+        self.norm = RMSNorm(dim)
         self.br1  = SS2D(dim, d_state=d_state//2, expand=1.25)   # nhanh, nông
         self.br2  = SS2D(dim, d_state=d_state,    expand=1.75)   # mặc định
         self.br3  = SS2D(dim, d_state=d_state*2,  expand=1.25)   # bộ nhớ dài
@@ -680,7 +680,8 @@ class TripletSSMBottleneck(nn.Module):
 
 
 # models/vmunet/gated_skip_nhwc.py (hoặc ngay trong vmamba.py)
-class RGatedSkipNHWC(nn.Module):
+class Semantic_Difference_Gated_Skip_Connections
+(nn.Module):
     """
     Residual-gated skip (NHWC):
       y = skip + (1 - g) * (dec - skip)
@@ -718,7 +719,7 @@ class RGatedSkipNHWC(nn.Module):
         return skip + (1.0 - g) * (dec - skip)
 
 
-class RMSNormNHWC(nn.Module):
+class RMSNorm(nn.Module):
     """
     RMSNorm cho tensor NHWC: (B, H, W, C)
     y = x / sqrt(mean(x^2, dim=C) + eps) * gamma
@@ -740,18 +741,18 @@ class VSSM(nn.Module):
     def __init__(self, patch_size=4, in_chans=3, num_classes=1000, depths=[2, 2, 9, 2], depths_decoder=[2, 9, 2, 2],
                  dims=[96, 192, 384, 768], dims_decoder=[768, 384, 192, 96], d_state=16, drop_rate=0.,
                  attn_drop_rate=0., drop_path_rate=0.1,
-                 norm_layer=RMSNormNHWC, patch_norm=True,
+                 norm_layer=RMSNorm, patch_norm=True,
                  use_checkpoint=False,bottleneck='triplet', **kwargs):
         super().__init__()
         if bottleneck == 'vim':
             self.bneck = VimBiDirBottleneck(dims_decoder[0], d_state=d_state, drop_path=0.1)
         elif bottleneck == 'triplet':
-            self.bneck = TripletSSMBottleneck(dims_decoder[0], d_state=d_state, drop_path=0.1)
+            self.bneck = Long_Short_SSM(dims_decoder[0], d_state=d_state, drop_path=0.1)
         else:
             self.bneck = None
         encoder_bneck = 'triplet'  # hoặc 'vim' hoặc None
         if encoder_bneck == 'triplet':
-            self.enc_bneck = TripletSSMBottleneck(dims[-1], d_state=d_state, drop_path=0.1)
+            self.enc_bneck = Long_Short_SSM(dims[-1], d_state=d_state, drop_path=0.1)
         elif encoder_bneck == 'vim':
             self.enc_bneck = VimBiDirBottleneck(dims[-1], d_state=d_state, drop_path=0.1)
         else:
@@ -811,7 +812,8 @@ class VSSM(nn.Module):
             )
             self.layers_up.append(layer)
         self.gates = nn.ModuleList([
-            RGatedSkipNHWC(dims_decoder[i]) for i in range(1, self.num_layers)
+            Semantic_Difference_Gated_Skip_Connections
+(dims_decoder[i]) for i in range(1, self.num_layers)
         ])
         self.final_up = Final_PatchExpand2D(dim=dims_decoder[-1], dim_scale=4, norm_layer=norm_layer)
         self.final_conv = nn.Conv2d(dims_decoder[-1] // 4, num_classes, 1)

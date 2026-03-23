@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import timm
 from datasets.dataset import NPY_datasets
 from tensorboardX import SummaryWriter
-from models.vmunet.vmunet import VMUNet
+from models.bemunet.bemunet import BEMUNet
 
 from engine import *
 import os
@@ -13,15 +13,7 @@ from utils import *
 from configs.config_setting import setting_config
 
 import warnings
-import requests
 warnings.filterwarnings("ignore")
-def send_telegram_message(token, chat_id, message):
-    try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        data = {"chat_id": chat_id, "text": message}
-        requests.post(url, data=data, timeout=5)
-    except Exception as e:
-        print(f"[Telegram] Failed: {e}")
 
 def main(config):
     print('#----------Creating logger----------#')
@@ -64,8 +56,8 @@ def main(config):
 
     print('#----------Prepareing Model----------#')
     model_cfg = config.model_config
-    if config.network == 'vmunet':
-        model = VMUNet(
+    if config.network == 'bemunet':
+        model = BEMUNet(
             num_classes=model_cfg['num_classes'],
             input_channels=model_cfg['input_channels'],
             depths=model_cfg['depths'],
@@ -87,9 +79,10 @@ def main(config):
     scheduler = get_scheduler(config, optimizer)
 
     print('#----------Set other params----------#')
+    min_loss = 999
     start_epoch = 1
-    best_miou = -1
-    best_epoch = 1
+    min_epoch = 1
+
 
 
     if config.only_test_and_save_figs:
@@ -99,12 +92,12 @@ def main(config):
         if not os.path.exists(config.work_dir + 'outputs/'):
             os.makedirs(config.work_dir + 'outputs/')
         loss = test_one_epoch(
-            val_loader,
-            model,
-            criterion,
-            logger,
-            config,
-        )
+                val_loader,
+                model,
+                criterion,
+                logger,
+                config,
+            )
         return
 
     if os.path.exists(resume_model):
@@ -115,15 +108,17 @@ def main(config):
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         saved_epoch = checkpoint['epoch']
         start_epoch += saved_epoch
-        best_miou = checkpoint['best_miou'] 
-        best_epoch = checkpoint['best_epoch']
+        min_loss, min_epoch, loss = checkpoint['min_loss'], checkpoint['min_epoch'], checkpoint['loss']
 
-        log_info = f'resuming model from {resume_model}. resume_epoch: {saved_epoch}, best_miou: {best_miou:.6f}, best_epoch: {best_epoch}'
+        log_info = f'resuming model from {resume_model}. resume_epoch: {saved_epoch}, min_loss: {min_loss:.4f}, min_epoch: {min_epoch}, loss: {loss:.4f}'
         logger.info(log_info)
+
+
+
 
     step = 0
     print('#----------Training----------#')
-    for epoch in range(start_epoch, config.epochs + 1): 
+    for epoch in range(start_epoch, config.epochs + 1):
 
         torch.cuda.empty_cache()
 
@@ -140,77 +135,46 @@ def main(config):
             writer
         )
 
-        #loss = val_one_epoch(
-        #    val_loader,
-        #    model,
-        #    criterion,
-        #    epoch,
-        #    logger,
-        #    config
-        #)
-#
-        #if loss < min_loss:
-        #    msg=f"✅ New best model at epoch {epoch}: loss improved from {min_loss:.4f} → {loss:.4f}"
-        #    print(msg)
-        #    torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
-        #    min_loss = loss
-        #    min_epoch = epoch
-        #    if getattr(config, 'enable_telegram', False):
-        #        send_telegram_message(
-        #    config.telegram_token,
-        #    config.telegram_chat_id,
-        #    msg
-        #)
-        miou = val_one_epoch(
-            val_loader,
-            model,
-            criterion,
-            epoch,
-            logger,
-            config
-        )
+        loss = val_one_epoch(
+                val_loader,
+                model,
+                criterion,
+                epoch,
+                logger,
+                config
+            )
 
-        if miou > best_miou:
-            msg = f"✅ New best model at epoch {epoch}: mIoU improved from {best_miou:.6f} → {miou:.6f}"
-            print(msg)
+        if loss < min_loss:
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
-            best_miou = miou
-            best_epoch = epoch
-            if getattr(config, 'enable_telegram', False):
-                send_telegram_message(
-                    config.telegram_token,
-                    config.telegram_chat_id,
-                    msg
-                )
-
+            min_loss = loss
+            min_epoch = epoch
 
         torch.save(
-    {
-        'epoch': epoch,
-        'best_miou': best_miou,
-        'best_epoch': best_epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(),
-    }, os.path.join(checkpoint_dir, 'latest.pth'))
-
+            {
+                'epoch': epoch,
+                'min_loss': min_loss,
+                'min_epoch': min_epoch,
+                'loss': loss,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+            }, os.path.join(checkpoint_dir, 'latest.pth')) 
 
     if os.path.exists(os.path.join(checkpoint_dir, 'best.pth')):
         print('#----------Testing----------#')
         best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
         model.load_state_dict(best_weight)
-        test_one_epoch(
-    val_loader,
-    model,
-    criterion,
-    logger,
-    config,
-)
+        loss = test_one_epoch(
+                val_loader,
+                model,
+                criterion,
+                logger,
+                config,
+            )
         os.rename(
             os.path.join(checkpoint_dir, 'best.pth'),
-            os.path.join(checkpoint_dir, f'best-epoch{best_epoch}-miou{best_miou:.4f}.pth')
-        )
-
+            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-loss{min_loss:.4f}.pth')
+        )      
 
 
 if __name__ == '__main__':
