@@ -1,88 +1,166 @@
-# VM-UNet
-This is the official code repository for "VM-UNet: Vision Mamba UNet for Medical
-Image Segmentation". {[Arxiv Paper](https://arxiv.org/abs/2402.02491)}
+# BEM-UNet
+
+Code repository for **BEM-UNet**: a boundary-enhanced medical image segmentation architecture built upon efficient state-space modeling.
 
 ## Abstract
-In the realm of medical image segmentation, both CNN-based and Transformer-based models have been extensively explored. However, CNNs exhibit limitations in long-range modeling capabilities, whereas Transformers are hampered by their quadratic computational complexity. Recently, State Space Models (SSMs), exemplified by Mamba, have emerged as a promising approach. They not only excel in modeling long-range interactions but also maintain a linear computational complexity. In this paper, leveraging state space models, we propose a U-shape architecture model for medical image segmentation, named Vision Mamba UNet (VM-UNet). Specifically, the Visual State Space (VSS) block is introduced as the foundation block to capture extensive contextual information, and an asymmetrical encoder-decoder structure is constructed. We conduct comprehensive experiments on the ISIC17, ISIC18, and Synapse datasets, and the results indicate that VM-UNet performs competitively in medical image segmentation tasks. To our best knowledge, this is the first medical image segmentation model constructed based on the pure SSM-based model. We aim to establish a baseline and provide valuable insights for the future development of more efficient and effective SSM-based segmentation systems.
 
-## 0. Main Environments
+Medical image segmentation requires precise boundary delineation while effectively modeling long-range contextual dependencies. Convolutional neural networks (CNNs) excel at capturing local details but struggle with global context, whereas Transformer-based methods introduce high computational complexity. Recently, State Space Models (SSMs) have emerged as an efficient alternative for long-range dependency modeling; however, existing SSM-based segmentation frameworks still suffer from inadequate boundary preservation and limited multi-scale feature interaction. In this paper, we propose **BEM-UNet**, a boundary-enhanced segmentation architecture built upon efficient state-space modeling. The proposed framework integrates **Efficient Vision State Space (E-VSS)** blocks for global context modeling, a **Lightweight Dual-Domain Feature Block** to enhance early representations using both spatial and frequency-domain information, and a **Long–Short SSM bottleneck** to capture multi-scale dependencies. To further improve feature interaction and prediction quality, we introduce **Semantic-Difference Gated Skip Connections** for adaptive encoder–decoder fusion and a **Reverse-Guided Refinement Block** for progressive error correction. Extensive experiments on the ISIC2017, ISIC2018, and Synapse datasets demonstrate that BEM-UNet consistently outperforms existing methods. In particular, the proposed model achieves superior Dice Similarity Coefficient (DSC) and significantly reduces the 95% Hausdorff Distance (HD95), indicating improved segmentation accuracy and boundary delineation.
+
+## Architecture
+
+![BEM-UNet Architecture](architecture.png)
+
+## Architecture Overview
+
+BEM-UNet adopts an asymmetrical encoder-decoder structure where both encoder and decoder are built entirely from **Visual State Space (VSS)** blocks — inheriting the linear computational complexity of State Space Models (SSMs) and their ability to model long-range dependencies.
+
+Key novel components on top of the VMamba backbone:
+
+- **LDDFB (Local Dense Frequency Block):** Combines spatial-domain depthwise convolutions with FFT-based frequency-domain processing. Learnable frequency weights allow the model to selectively amplify informative frequency components in the bottleneck.
+- **Long_Short_SSM:** Multi-branch SSM bottleneck that processes features at different state-space scales simultaneously.
+- **RGRB (Reverse Attention Gated Refinement Block):** Uses `1 - sigmoid(pred)` masking to guide each decoder stage toward error-prone regions, progressively refining predictions from coarse to fine.
+- **Semantic_Difference_Gated_Skip_Connections:** Adaptive gating on skip connections based on semantic feature differences between encoder and decoder, suppressing irrelevant information during multi-scale fusion.
+- **Deep Supervision:** Auxiliary predictions at multiple decoder levels with progressive loss weighting.
+
+### Model Config (ISIC)
+| Parameter | Value |
+|---|---|
+| Encoder depths | [2, 2, 2, 2] |
+| Decoder depths | [2, 2, 2, 1] |
+| Drop path rate | 0.2 |
+| Input size | 256 × 256 |
+| Pre-trained backbone | VMamba Small (238 epochs, EMA) |
+
+---
+
+## 0. Environment Setup
+
 ```bash
-conda create -n vmunet python=3.8
-conda activate vmunet
-pip install torch==1.13.0 torchvision==0.14.0 torchaudio==0.13.0 --extra-index-url https://download.pytorch.org/whl/cu117
-pip install packaging
-pip install timm==0.4.12
+conda create -n bemunet python=3.10
+conda activate bemunet
+
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install packaging timm
 pip install pytest chardet yacs termcolor
 pip install submitit tensorboardX
-pip install triton==2.0.0
-pip install causal_conv1d==1.0.0  # causal_conv1d-1.0.0+cu118torch1.13cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
-pip install mamba_ssm==1.0.1  # mmamba_ssm-1.0.1+cu118torch1.13cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
-pip install scikit-learn matplotlib thop h5py SimpleITK scikit-image medpy yacs
+pip install triton
+pip install causal_conv1d mamba_ssm
+pip install scikit-learn matplotlib thop h5py SimpleITK scikit-image medpy yacs einops
 ```
-The .whl files of causal_conv1d and mamba_ssm could be found here. {[Baidu](https://pan.baidu.com/s/1Tibn8Xh4FMwj0ths8Ufazw?pwd=uu5k) or [GoogleDrive](https://drive.google.com/drive/folders/1tZGs1YFHiDrMa-MjYY8ZoEnCyy7m7Gaj?usp=sharing)}
 
-## 1. Prepare the dataset
+> Pre-built `.whl` files for `causal_conv1d` and `mamba_ssm` compatible with your CUDA/PyTorch version can be found at the [VMamba releases](https://github.com/MzeroMiko/VMamba).
 
-### ISIC datasets
-- The ISIC17 and ISIC18 datasets, divided into a 7:3 ratio, can be found here {[Baidu](https://pan.baidu.com/s/1Y0YupaH21yDN5uldl7IcZA?pwd=dybm) or [GoogleDrive](https://drive.google.com/file/d/1XM10fmAXndVLtXWOt5G0puYSQyI2veWy/view?usp=sharing)}. 
+---
 
-- After downloading the datasets, you are supposed to put them into './data/isic17/' and './data/isic18/', and the file format reference is as follows. (take the ISIC17 dataset as an example.)
+## 1. Prepare the Dataset
 
-- './data/isic17/'
-  - train
-    - images
-      - .png
-    - masks
-      - .png
-  - val
-    - images
-      - .png
-    - masks
-      - .png
+### ISIC Datasets (Binary Skin Lesion Segmentation)
 
-### Synapse datasets
+Download ISIC17 and ISIC18 (split 7:3) and place them as follows:
 
-- For the Synapse dataset, you could follow [Swin-UNet](https://github.com/HuCaoFighting/Swin-Unet) to download the dataset, or you could download them from {[Baidu](https://pan.baidu.com/s/1JCXBfRL9y1cjfJUKtbEhiQ?pwd=9jti)}.
+```
+./data/isic2017/
+    train/
+        images/   *.png
+        masks/    *.png
+    val/
+        images/   *.png
+        masks/    *.png
 
-- After downloading the datasets, you are supposed to put them into './data/Synapse/', and the file format reference is as follows.
+./data/isic2018/
+    train/
+        images/   *.png
+        masks/    *.png
+    val/
+        images/   *.png
+        masks/    *.png
+```
 
-- './data/Synapse/'
-  - lists
-    - list_Synapse
-      - all.lst
-      - test_vol.txt
-      - train.txt
-  - test_vol_h5
-    - casexxxx.npy.h5
-  - train_npz
-    - casexxxx_slicexxx.npz
+### Synapse Dataset (Multi-organ Segmentation)
 
-## 2. Prepare the pre_trained weights
+Follow [Swin-UNet](https://github.com/HuCaoFighting/Swin-Unet) to download the Synapse dataset and place it as:
 
-- The weights of the pre-trained VMamba could be downloaded from [Baidu](https://pan.baidu.com/s/1ci_YvPPEiUT2bIIK5x8Igw?pwd=wnyy) or [GoogleDrive](https://drive.google.com/drive/folders/1tZGs1YFHiDrMa-MjYY8ZoEnCyy7m7Gaj?usp=sharing). After that, the pre-trained weights should be stored in './pretrained_weights/'.
+```
+./data/Synapse/
+    lists/
+        list_Synapse/
+            all.lst
+            test_vol.txt
+            train.txt
+    test_vol_h5/
+        casexxxx.npy.h5
+    train_npz/
+        casexxxx_slicexxx.npz
+```
 
+---
 
+## 2. Pre-trained Weights
 
-## 3. Train the VM-UNet
+Download the VMamba Small pre-trained weights (`vmamba_small_e238_ema.pth`) from [VMamba](https://github.com/MzeroMiko/VMamba) and place them in:
+
+```
+./pre_trained_weights/vmamba_small_e238_ema.pth
+```
+
+---
+
+## 3. Train BEM-UNet
+
 ```bash
-cd VM-UNet
-python train.py  # Train and test VM-UNet on the ISIC17 or ISIC18 dataset.
-python train_synapse.py  # Train and test VM-UNet on the Synapse dataset.
+# Train on ISIC17 or ISIC18 (set `datasets` in configs/config_setting.py)
+python train.py
+
+# Train on Synapse
+python train_synapse.py
 ```
 
-**NOTE**: If you want to use the trained checkpoint for inference testing only and save the corresponding test images, you can follow these steps:  
+**Inference only (no re-training):**
 
-- **In `config_setting`**:  
-   - Set the parameter `only_test_and_save_figs` to `True`.  
-   - Fill in the path of the trained checkpoint in `best_ckpt_path`.  
-   - Specify the save path for test images in `img_save_path`.  
+In `configs/config_setting.py`, set:
+```python
+only_test_and_save_figs = True
+best_ckpt_path = 'PATH_TO_YOUR_BEST_CKPT'
+img_save_path  = 'PATH_TO_SAVE_IMAGES'
+```
+Then run `python train.py`.
 
-- **Execute the script**:  
-   After setting the above parameters, you can run `train.py`.
+### Training Hyperparameters
 
-## 4. Obtain the outputs
-- After trianing, you could obtain the results in './results/'
+| Setting | ISIC17/18 | Synapse |
+|---|---|---|
+| Optimizer | AdamW | AdamW |
+| Learning rate | 0.001 | 0.001 |
+| Scheduler | CosineAnnealingLR (T_max=50) | CosineAnnealingLR |
+| Epochs | 300 | 300 |
+| Batch size | 1 | 28 |
+| Loss | BceDiceLoss (wb=1, wd=1) | CeDiceLoss (CE×0.4 + Dice×0.6) |
+| Input size | 256 × 256 | 224 × 224 |
+
+---
+
+## 4. Results
+
+### Synapse Multi-organ Segmentation
+
+| Model | Mean Dice ↑ | Mean HD95 ↓ |
+|---|---|---|
+| **BEM-UNet** | **83.57** | **18.9** |
+
+Checkpoints are saved in `./results/` with the naming format:
+```
+bemunet_<dataset>_<datetime>/
+    checkpoints/
+        best-epoch<N>-loss<X>.pth
+        latest.pth
+    log/
+    outputs/
+```
+
+---
 
 ## 5. Acknowledgments
 
-- We thank the authors of [VMamba](https://github.com/MzeroMiko/VMamba) and [Swin-UNet](https://github.com/HuCaoFighting/Swin-Unet) for their open-source codes.
+- [VMamba](https://github.com/MzeroMiko/VMamba) — backbone and pre-trained weights
+- [Swin-UNet](https://github.com/HuCaoFighting/Swin-Unet) — dataset preparation reference
+- [VM-UNet](https://arxiv.org/abs/2402.02491) — foundational SSM-based segmentation baseline
