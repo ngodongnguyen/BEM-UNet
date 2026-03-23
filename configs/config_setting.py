@@ -11,11 +11,11 @@ class setting_config:
     telegram_chat_id = "-4821904213"
     enable_telegram = True
 
-    network = 'vmunet'
+    network = 'bemunet'
     model_config = {
         'num_classes': 1, 
         'input_channels': 3, 
-        # ----- VM-UNet ----- #
+        # ----- BEM_UNet ----- #
         'depths': [2,2,2,2],
         'depths_decoder': [2,2,2,1],
         'drop_path_rate': 0.2,

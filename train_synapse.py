@@ -10,7 +10,7 @@ from torchvision import transforms
 from datasets.dataset import RandomGenerator
 from engine_synapse import *
 
-from models.vmunet.vmunet import VMUNet
+from models.bemunet.bemunet import BEMUNet
 
 import os
 import sys
@@ -19,18 +19,10 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # "0, 1, 2, 3"
 
 from utils import *
 from configs.config_setting_synapse import setting_config
-import  requests
 import warnings
 
 warnings.filterwarnings("ignore")
 
-def send_telegram_message(token, chat_id, message):
-    try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        data = {"chat_id": chat_id, "text": message}
-        requests.post(url, data=data, timeout=5)
-    except Exception as e:
-        print(f"[Telegram] Failed: {e}")
 
 
 def main(config):
@@ -49,21 +41,8 @@ def main(config):
     logger = get_logger('train', log_dir)
 
     log_config_info(config, logger)
-    # ==============================================================================
-    # 1. SETUP TELEGRAM TỪ CONFIG
-    # ==============================================================================
-    # Dùng getattr để tránh lỗi nếu file config cũ chưa có các dòng này
-    tg_token = getattr(config, 'telegram_token', None)
-    tg_chat_id = getattr(config, 'telegram_chat_id', None)
-    enable_tg = getattr(config, 'enable_telegram', False)
 
-    # Test gửi tin nhắn mở đầu
-    if enable_tg and tg_token and tg_chat_id:
-        print(f"Testing Telegram connection...")
-        send_telegram_message(tg_token, tg_chat_id, f"🚀 Start Training: {config.network} on {config.datasets}")
-    else:
-        print("Telegram notification is DISABLED or missing config.")
-    # ==============================================================================
+    
     print('#----------GPU init----------#')
     set_seed(config.seed)
     gpu_ids = [0]  # [0, 1, 2, 3]
@@ -99,8 +78,8 @@ def main(config):
 
     print('#----------Prepareing Models----------#')
     model_cfg = config.model_config
-    if config.network == 'vmunet':
-        model = VMUNet(
+    if config.network == 'bemunet':
+        model = BEMUNet(
             num_classes=model_cfg['num_classes'],
             input_channels=model_cfg['input_channels'],
             depths=model_cfg['depths'],
@@ -125,11 +104,11 @@ def main(config):
     scaler = GradScaler()
 
     print('#----------Set other params----------#')
-    # --- KHỞI TẠO BIẾN ---
-    max_mean_dice = 0.0  # Theo dõi Dice cao nhất
-    best_epoch = 0
-    start_epoch = 1
+    
     min_loss = 999
+    start_epoch = 1
+    min_epoch = 1
+
 
     if config.only_test_and_save_figs:
         checkpoint = torch.load(config.best_ckpt_path, map_location=torch.device('cpu'))
@@ -158,13 +137,9 @@ def main(config):
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         saved_epoch = checkpoint['epoch']
         start_epoch += saved_epoch
+        min_loss, min_epoch, loss = checkpoint['min_loss'], checkpoint['min_epoch'], checkpoint['loss']
 
-        min_loss = checkpoint.get('min_loss', 999)
-        max_mean_dice = checkpoint.get('max_mean_dice', 0.0)
-        best_epoch = checkpoint.get('best_epoch', 0)
-        loss = checkpoint.get('loss', 0)
-
-        log_info = f'resuming model from {resume_model}. resume_epoch: {saved_epoch}, max_mean_dice: {max_mean_dice:.4f}, best_epoch: {best_epoch}'
+        log_info = f'resuming model from {resume_model}. resume_epoch: {saved_epoch}, min_loss: {min_loss:.4f}, min_epoch: {min_epoch}, loss: {loss:.4f}'
         logger.info(log_info)
 
     print('#----------Training----------#')
@@ -185,16 +160,39 @@ def main(config):
             scaler=scaler
         )
 
-        # Cập nhật min_loss để lưu log
         if loss < min_loss:
+            torch.save(model.module.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
             min_loss = loss
+            min_epoch = epoch
 
-        # --- Validate theo khoảng Epoch ---
-        is_val_epoch = (80 <= epoch <= 120) or (260 <= epoch <= 300)
-
-        if is_val_epoch:
-            print(f"Epoch {epoch}: Starting Validation...")
+        if epoch % config.val_interval == 0:
             mean_dice, mean_hd95 = val_one_epoch(
+                    val_dataset,
+                    val_loader,
+                    model,
+                    epoch,
+                    logger,
+                    config,
+                    test_save_path=outputs,
+                    val_or_test=False
+                )
+
+        torch.save(
+            {
+                'epoch': epoch,
+                'min_loss': min_loss,
+                'min_epoch': min_epoch,
+                'loss': loss,
+                'model_state_dict': model.module.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+            }, os.path.join(checkpoint_dir, 'latest.pth')) 
+
+    if os.path.exists(os.path.join(checkpoint_dir, 'best.pth')):
+        print('#----------Testing----------#')
+        best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
+        model.module.load_state_dict(best_weight)
+        mean_dice, mean_hd95 = val_one_epoch(
                 val_dataset,
                 val_loader,
                 model,
@@ -202,61 +200,13 @@ def main(config):
                 logger,
                 config,
                 test_save_path=outputs,
-                val_or_test=False
+                val_or_test=True
             )
-
-            # --- [UPDATED] Block xử lý Best Model ---
-            if mean_dice > max_mean_dice:
-                # 1. Tạo nội dung thông báo
-                msg_content = f"🔥🔥🔥 NEW RECORD! Epoch {epoch}: Mean Dice = {mean_dice:.4f} (Old Best: {max_mean_dice:.4f})"
-
-                # 2. Print nổi bật ra màn hình console
-                print("\n" + "=" * 40)
-                print(msg_content)
-                print("=" * 40 + "\n")
-
-                # 3. Gửi Telegram (Bạn thay TOKEN và CHAT_ID vào đây nếu muốn dùng)
-                if enable_tg and tg_token and tg_chat_id:
-                    send_telegram_message(tg_token, tg_chat_id, msg_content)
-                logger.info(f"New best Mean Dice: {mean_dice:.4f}. Saving best model...")
-                torch.save(model.module.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
-                max_mean_dice = mean_dice
-                best_epoch = epoch
-
-        # Lưu latest checkpoint
-        torch.save(
-            {
-                'epoch': epoch,
-                'min_loss': min_loss,
-                'max_mean_dice': max_mean_dice,
-                'best_epoch': best_epoch,
-                'loss': loss,
-                'model_state_dict': model.module.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-            }, os.path.join(checkpoint_dir, 'latest.pth'))
-
-    # Testing sau khi train xong
-    if os.path.exists(os.path.join(checkpoint_dir, 'best.pth')):
-        print('#----------Testing Best Model----------#')
-        best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
-        model.module.load_state_dict(best_weight)
-
-        mean_dice, mean_hd95 = val_one_epoch(
-            val_dataset,
-            val_loader,
-            model,
-            epoch,
-            logger,
-            config,
-            test_save_path=outputs,
-            val_or_test=True
-        )
         os.rename(
             os.path.join(checkpoint_dir, 'best.pth'),
-            os.path.join(checkpoint_dir,
-                         f'best-epoch{best_epoch}-mean_dice{mean_dice:.4f}-mean_hd95{mean_hd95:.4f}.pth')
-        )
+            os.path.join(checkpoint_dir, 
+                f'best-epoch{min_epoch}-mean_dice{mean_dice:.4f}-mean_hd95{mean_hd95:.4f}.pth')
+        )      
 
 
 if __name__ == '__main__':

@@ -3,7 +3,7 @@ import torch
 from torch import nn
 
 
-class VMUNet(nn.Module):
+class BEMUNet(nn.Module):
     def __init__(self,
                  input_channels=3,
                  num_classes=1,

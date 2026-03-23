@@ -10,11 +10,11 @@ class setting_config:
     """
     the config of training setting.
     """
-    network = 'vmunet' 
+    network = 'bemunet' 
     model_config = {
         'num_classes': 9, 
         'input_channels': 3, 
-        # ----- VM-UNet ----- #
+        # ----- BEM-UNet ----- #
         'depths': [2,2,2,2],
         'depths_decoder': [2,2,2,1],
         'drop_path_rate': 0.2,
@@ -46,7 +46,7 @@ class setting_config:
     rank = None
     amp = False
 
-    batch_size = 1
+    batch_size = 28
     epochs = 300
     work_dir = 'results/' + network + '_' + datasets_name + '_' + datetime.now().strftime('%A_%d_%B_%Y_%Hh_%Mm_%Ss') + '/'
     print_interval = 20
