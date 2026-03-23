@@ -1,0 +1,76 @@
+# --- Python / Deep Learning ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.env
+.venv
+venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs / Debug
+*.log
+logs/
+wandb/
+lightning_logs/
+
+# Datasets
+data/
+datasets/
+*.csv
+*.tsv
+*.jsonl
+*.zip
+*.tar
+*.gz
+
+# Models / Weights
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.pb
+*.onnx
+*.npz
+*.npy
+*.pkl
+*.pickle
+pre_trained_weights/
+checkpoints/
+outputs/
+results
+# Cache
+.cache/
+__pycache__/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Unity ---
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+MemoryCaptures/
+UserSettings/
+Assets/AssetStoreTools*
+*.apk
+*.aab
+*.unitypackage
+*/[Ll]ightmap*/
+*/[Aa]ddressable*/
+*/[Bb]uildCache*/
+*/[Gg]I*/
+mamba23
