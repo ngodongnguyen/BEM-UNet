@@ -10,27 +10,6 @@ Medical image segmentation requires precise boundary delineation while effective
 
 ![BEM-UNet Architecture](architecture.png)
 
-## Architecture Overview
-
-BEM-UNet adopts an asymmetrical encoder-decoder structure where both encoder and decoder are built entirely from **Visual State Space (VSS)** blocks — inheriting the linear computational complexity of State Space Models (SSMs) and their ability to model long-range dependencies.
-
-Key novel components on top of the VMamba backbone:
-
-- **LDDFB (Local Dense Frequency Block):** Combines spatial-domain depthwise convolutions with FFT-based frequency-domain processing. Learnable frequency weights allow the model to selectively amplify informative frequency components in the bottleneck.
-- **Long_Short_SSM:** Multi-branch SSM bottleneck that processes features at different state-space scales simultaneously.
-- **RGRB (Reverse Attention Gated Refinement Block):** Uses `1 - sigmoid(pred)` masking to guide each decoder stage toward error-prone regions, progressively refining predictions from coarse to fine.
-- **Semantic_Difference_Gated_Skip_Connections:** Adaptive gating on skip connections based on semantic feature differences between encoder and decoder, suppressing irrelevant information during multi-scale fusion.
-- **Deep Supervision:** Auxiliary predictions at multiple decoder levels with progressive loss weighting.
-
-### Model Config (ISIC)
-| Parameter | Value |
-|---|---|
-| Encoder depths | [2, 2, 2, 2] |
-| Decoder depths | [2, 2, 2, 1] |
-| Drop path rate | 0.2 |
-| Input size | 256 × 256 |
-| Pre-trained backbone | VMamba Small (238 epochs, EMA) |
-
 ---
 
 ## 0. Environment Setup
@@ -139,27 +118,7 @@ Then run `python train.py`.
 
 ---
 
-## 4. Results
-
-### Synapse Multi-organ Segmentation
-
-| Model | Mean Dice ↑ | Mean HD95 ↓ |
-|---|---|---|
-| **BEM-UNet** | **83.57** | **18.9** |
-
-Checkpoints are saved in `./results/` with the naming format:
-```
-bemunet_<dataset>_<datetime>/
-    checkpoints/
-        best-epoch<N>-loss<X>.pth
-        latest.pth
-    log/
-    outputs/
-```
-
----
-
-## 5. Acknowledgments
+## 4. Acknowledgments
 
 - [VMamba](https://github.com/MzeroMiko/VMamba) — backbone and pre-trained weights
 - [Swin-UNet](https://github.com/HuCaoFighting/Swin-Unet) — dataset preparation reference
