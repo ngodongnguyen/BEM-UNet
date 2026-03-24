@@ -94,17 +94,7 @@ python train.py
 python train_synapse.py
 ```
 
-**Inference only (no re-training):**
-
-In `configs/config_setting.py`, set:
-```python
-only_test_and_save_figs = True
-best_ckpt_path = 'PATH_TO_YOUR_BEST_CKPT'
-img_save_path  = 'PATH_TO_SAVE_IMAGES'
-```
-Then run `python train.py`.
-
-### Training Hyperparameters
+#### Training Hyperparameters
 
 | Setting | ISIC17/18 | Synapse |
 |---|---|---|
@@ -118,7 +108,23 @@ Then run `python train.py`.
 
 ---
 
-## 4. Acknowledgments
+## 4. Best Checkpoints
+
+The best trained checkpoints for each dataset are available on Google Drive:
+
+[Download best checkpoints (Google Drive)](https://drive.google.com/drive/folders/1RAlOlFMRWWanGawP_baf2BPZWH2s8yKH)
+
+To run inference with a downloaded checkpoint, set in `configs/config_setting.py`:
+```python
+only_test_and_save_figs = True
+best_ckpt_path = 'PATH_TO_DOWNLOADED_CKPT'
+img_save_path  = 'PATH_TO_SAVE_IMAGES'
+```
+Then run `python train.py`.
+
+---
+
+## 5. Acknowledgments
 
 - [VMamba](https://github.com/MzeroMiko/VMamba) — backbone and pre-trained weights
 - [Swin-UNet](https://github.com/HuCaoFighting/Swin-Unet) — dataset preparation reference
