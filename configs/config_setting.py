@@ -7,9 +7,6 @@ class setting_config:
     """
     the config of training setting.
     """
-    telegram_token = "8242529875:AAFIxOeOzdiHiCKYarVDo76A6hk54S0Mxkk"
-    telegram_chat_id = "-4821904213"
-    enable_telegram = True
 
     network = 'bemunet'
     model_config = {
