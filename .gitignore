@@ -21,7 +21,6 @@ lightning_logs/
 
 # Datasets
 data/
-datasets/
 *.csv
 *.tsv
 *.jsonl
