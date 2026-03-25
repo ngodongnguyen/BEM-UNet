@@ -17,17 +17,35 @@ Medical image segmentation requires precise boundary delineation while effective
 ```bash
 conda create -n bemunet python=3.10
 conda activate bemunet
-
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install packaging timm
-pip install pytest chardet yacs termcolor
-pip install submitit tensorboardX
-pip install triton
-pip install causal_conv1d mamba_ssm
-pip install scikit-learn matplotlib thop h5py SimpleITK scikit-image medpy yacs einops
 ```
 
-> Pre-built `.whl` files for `causal_conv1d` and `mamba_ssm` compatible with your CUDA/PyTorch version can be found at the [VMamba releases](https://github.com/MzeroMiko/VMamba).
+**Install PyTorch:**
+```bash
+pip install torch==2.9.0 torchvision==0.24.0
+```
+
+**Install dependencies:**
+```bash
+pip install transformers==4.37.2 timm
+pip install h5py scipy tensorboardX scikit-learn matplotlib
+pip install SimpleITK medpy thop yacs ml_collections einops
+```
+
+**Install `causal-conv1d`, `mamba`, and `selective_scan` from source:**
+
+```bash
+git clone https://github.com/Dao-AILab/causal-conv1d
+cd causal-conv1d
+pip install --no-build-isolation .
+
+git clone https://github.com/state-spaces/mamba
+cd mamba
+pip install --no-build-isolation -e .
+
+git clone https://github.com/MzeroMiko/VMamba
+cd VMamba/kernels/selective_scan
+pip install --no-build-isolation .
+```
 
 ---
 
