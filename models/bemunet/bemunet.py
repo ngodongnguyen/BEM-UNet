@@ -17,7 +17,7 @@ class BEMUNet(nn.Module):
         self.load_ckpt_path = load_ckpt_path
         self.num_classes = num_classes
 
-        self.vmunet = VSSM(in_chans=input_channels,
+        self.bemunet = VSSM(in_chans=input_channels,
                            num_classes=num_classes,
                            depths=depths,
                            depths_decoder=depths_decoder,
@@ -28,7 +28,7 @@ class BEMUNet(nn.Module):
     def forward(self, x):
         if x.size()[1] == 1:
             x = x.repeat(1, 3, 1, 1)
-        logits = self.vmunet(x)
+        logits = self.bemunet(x)
         if self.num_classes == 1:
             return torch.sigmoid(logits)
         else:
@@ -40,7 +40,7 @@ class BEMUNet(nn.Module):
 
         torch.serialization.add_safe_globals([yacs.config.CfgNode])
         if self.load_ckpt_path is not None:
-            model_dict = self.vmunet.state_dict()
+            model_dict = self.bemunet.state_dict()
             modelCheckpoint = torch.load(self.load_ckpt_path, weights_only=False)
             pretrained_dict = modelCheckpoint['model']
             # 过滤操作
@@ -50,13 +50,13 @@ class BEMUNet(nn.Module):
             print('Total model_dict: {}, Total pretrained_dict: {}, update: {}'.format(len(model_dict),
                                                                                        len(pretrained_dict),
                                                                                        len(new_dict)))
-            self.vmunet.load_state_dict_safe(model_dict)
+            self.bemunet.load_state_dict_safe(model_dict)
 
             not_loaded_keys = [k for k in pretrained_dict.keys() if k not in new_dict.keys()]
             print('Not loaded keys:', not_loaded_keys)
             print("encoder loaded finished!")
 
-            model_dict = self.vmunet.state_dict()
+            model_dict = self.bemunet.state_dict()
             modelCheckpoint = torch.load(self.load_ckpt_path, weights_only=False)
             pretrained_odict = modelCheckpoint['model']
             pretrained_dict = {}
@@ -80,7 +80,7 @@ class BEMUNet(nn.Module):
             print('Total model_dict: {}, Total pretrained_dict: {}, update: {}'.format(len(model_dict),
                                                                                        len(pretrained_dict),
                                                                                        len(new_dict)))
-            self.vmunet.load_state_dict(model_dict)
+            self.bemunet.load_state_dict(model_dict)
 
             # 找到没有加载的键(keys)
             not_loaded_keys = [k for k in pretrained_dict.keys() if k not in new_dict.keys()]
