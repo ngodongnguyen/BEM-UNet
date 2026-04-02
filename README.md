@@ -8,7 +8,7 @@ Medical image segmentation requires precise boundary delineation while effective
 
 ## Architecture
 
-![BEM-UNet Architecture](architecture.png)
+![BEM-UNet Architecture](architecturev2.png)
 
 ---
 
