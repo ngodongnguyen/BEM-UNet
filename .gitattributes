@@ -1,0 +1,12 @@
+# Force LF line endings for all text files
+* text=auto eol=lf
+
+# Explicitly binary — never touch line endings
+*.pth binary
+*.pt  binary
+*.npz binary
+*.h5  binary
+*.npy binary
+*.png binary
+*.jpg binary
+*.jpeg binary
