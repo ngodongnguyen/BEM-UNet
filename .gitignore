@@ -76,3 +76,8 @@ mamba23
 good_result/*
 .claude
 VM_UNet1
+
+#front end
+node_modules/
+package-lock.json
+package.json

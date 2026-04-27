@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-multipart
+torch>=2.0
+numpy
+scipy
+Pillow
+h5py
