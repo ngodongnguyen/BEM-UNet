@@ -112,7 +112,7 @@ def main(config):
 
     if config.only_test_and_save_figs:
         checkpoint = torch.load(config.best_ckpt_path, map_location=torch.device('cpu'))
-        model.load_state_dict(checkpoint)
+        model.module.load_state_dict(checkpoint)
         config.work_dir = config.img_save_path
         if not os.path.exists(config.work_dir + 'outputs/'):
             os.makedirs(config.work_dir + 'outputs/')
