@@ -10,6 +10,7 @@ class setting_config:
     """
     the config of training setting.
     """
+    enable_telegram = True
     network = 'bemunet' 
     model_config = {
         'num_classes': 9, 
