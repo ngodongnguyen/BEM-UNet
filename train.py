@@ -143,7 +143,7 @@ def main(config):
             writer
         )
 
-        miou = val_one_epoch(
+        _, miou = val_one_epoch(
             val_loader,
             model,
             criterion,
