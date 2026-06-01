@@ -8,6 +8,8 @@ from models.bemunet.bemunet import BEMUNet
 from engine import *
 import os
 import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 from utils import *
 from configs.config_setting import setting_config

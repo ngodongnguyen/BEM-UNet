@@ -14,6 +14,8 @@ from models.bemunet.bemunet import BEMUNet
 
 import os
 import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # "0, 1, 2, 3"
 
