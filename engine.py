@@ -55,7 +55,8 @@ def val_one_epoch(test_loader,
                  criterion,
                  epoch,
                  logger,
-                 config):
+                 config,
+                 writer=None):
    # switch to evaluate mode
    model.eval()
    preds = []
@@ -98,6 +99,11 @@ def val_one_epoch(test_loader,
        log_info = f'val epoch: {epoch}, loss: {np.mean(loss_list):.4f}, miou: {miou:.4f}'
    print(log_info)
    logger.info(log_info)
+
+   if writer is not None:
+       writer.add_scalar('val/loss', np.mean(loss_list), global_step=epoch)
+       writer.add_scalar('val/miou', miou, global_step=epoch)
+       writer.add_scalar('val/f1_dsc', f1_or_dsc, global_step=epoch)
 
    return np.mean(loss_list), miou
 

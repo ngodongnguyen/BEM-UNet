@@ -1,6 +1,5 @@
 import torch
 from torch.utils.data import DataLoader
-import timm
 from datasets.dataset import NPY_datasets
 from tensorboardX import SummaryWriter
 from models.bemunet.bemunet import BEMUNet
@@ -101,7 +100,7 @@ def main(config):
         config.work_dir = config.img_save_path
         if not os.path.exists(config.work_dir + 'outputs/'):
             os.makedirs(config.work_dir + 'outputs/')
-        loss = test_one_epoch(
+        test_one_epoch(
             val_loader,
             model,
             criterion,
@@ -149,7 +148,8 @@ def main(config):
             criterion,
             epoch,
             logger,
-            config
+            config,
+            writer
         )
 
         if miou > best_miou:
