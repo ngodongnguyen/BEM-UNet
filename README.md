@@ -2,9 +2,6 @@
 
 Code repository for **BEM-UNet**: a boundary-enhanced medical image segmentation architecture built upon efficient state-space modeling.
 
-## Abstract
-
-Medical image segmentation requires precise boundary delineation while effectively modeling long-range contextual dependencies. Convolutional neural networks (CNNs) excel at capturing local details but struggle with global context, whereas Transformer-based methods introduce high computational complexity. Recently, State Space Models (SSMs) have emerged as an efficient alternative for long-range dependency modeling; however, existing SSM-based segmentation frameworks still suffer from inadequate boundary preservation and limited multi-scale feature interaction. In this paper, we propose **BEM-UNet**, a boundary-enhanced segmentation architecture built upon efficient state-space modeling. The proposed framework integrates **Efficient Vision State Space (E-VSS)** blocks for global context modeling, a **Lightweight Dual-Domain Feature Block** to enhance early representations using both spatial and frequency-domain information, and a **Long–Short SSM bottleneck** to capture multi-scale dependencies. To further improve feature interaction and prediction quality, we introduce **Semantic-Difference Gated Skip Connections** for adaptive encoder–decoder fusion and a **Reverse-Guided Refinement Block** for progressive error correction. Extensive experiments on the ISIC2017, ISIC2018, and Synapse datasets demonstrate that BEM-UNet consistently outperforms existing methods. In particular, the proposed model achieves superior Dice Similarity Coefficient (DSC) and significantly reduces the 95% Hausdorff Distance (HD95), indicating improved segmentation accuracy and boundary delineation.
 
 ## Architecture
 
