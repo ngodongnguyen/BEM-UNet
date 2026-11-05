@@ -2,6 +2,8 @@
 
 Code repository for **BEM-UNet**: a boundary-enhanced medical image segmentation architecture built upon efficient state-space modeling.
 
+The BEM-UNet paper has been accepted for publication in *The Visual Computer*.
+
 
 ## Architecture
 
