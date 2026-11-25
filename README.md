@@ -119,7 +119,7 @@ python train_synapse.py
 | Learning rate | 0.001 | 0.001 |
 | Scheduler | CosineAnnealingLR (T_max=50) | CosineAnnealingLR |
 | Epochs | 300 | 300 |
-| Batch size | 1 | 28 |
+| Batch size | 28 | 28 |
 | Loss | BceDiceLoss (wb=1, wd=1) | CeDiceLoss (CE×0.4 + Dice×0.6) |
 | Input size | 256 × 256 | 224 × 224 |
 
